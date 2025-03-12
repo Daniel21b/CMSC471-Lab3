@@ -1,52 +1,84 @@
-.x-axis path,
-.y-axis path,
-.x-axis line,
-.y-axis line {
-    stroke: #333;
-    shape-rendering: crispEdges;
-}
-
-.x-axis text,
-.y-axis text {
-    font-size: 12px;
-    font-family: Arial, sans-serif;
-}
-
-.axis-label {
-    font-size: 14px;
-    font-weight: bold;
-}
-
 /* Reset default styles */
 * {
-    font-family: Arial, sans-serif;
-    max-width: 800px;
-    margin: 0px auto;
-    line-height: 1.8;
+    font-family: Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
 }
 
 /* Container styling for layout */
 .container {
     max-width: 800px;
-    margin: 2rem auto;
-    font-family: Arial, sans-serif;
+    margin: 1rem auto 0.5rem auto;
+    padding: 10px;
+    background-color: #f5cac3;
+}
+
+h1 {
+    text-align: center;
+    color: black;
+    font-family: Roboto, sans-serif;
+    margin-bottom: 10px;
+}
+
+p {
+    text-align: center;
+    color: black;
+    font-family: Roboto, sans-serif;
+    margin-bottom: 10px;
+    font-size: 1.2rem;
+}
+
+#vis {
+    background-color: #f5cac3;
+    padding: 5px;
+    border: none;
+    box-shadow: none;
 }
 
 #vis svg {
-    margin: 2rem 0;
-    border: 1px solid #ccc; /*otherwise you can't see this part*/
+    margin: 0 auto;
+    display: block;
 }
-button {
-    padding: 8px 16px;
-    margin-right: 10px;
+
+.axis-label {
+    font-size: 14px;
+    font-weight: bold;
+    fill: #555;
+}
+
+.title {
+    font-weight: bold;
+    fill: #333;
+}
+
+circle {
+    transition: opacity 0.2s;
+}
+
+circle:hover {
+    opacity: 0.8;
+}
+
+.x-axis path,
+.y-axis path,
+.x-axis line,
+.y-axis line {
+    stroke: #ccc;
+}
+
+.x-axis text,
+.y-axis text {
+    fill: #666;
+    font-size: 12px;
 }
 
 #tooltip {
-    position: absolute; /* So we can move it with the cursor */
-    padding: 10px;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    pointer-events: none; /* Prevent tooltip from interfering with mouse events */
-    font-size: 12px;
+    pointer-events: none;
+    z-index: 100;
+    font-size: 14px;
+    line-height: 1.4;
+}
+body {
+    background-color: #f5cac3;
 }
