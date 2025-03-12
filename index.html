@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>U.S. Weather Data Visualization (2017)</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <h1>U.S. Weather Data Visualization (2017)</h1>
+        <p class="subtitle">Explore the relationship between temperature, precipitation, and wind speed across U.S. weather stations in 2017.</p>
+    </header>
+    
+    <main>
+        <section class="visualization-container">
+            <div class="controls-panel">
+                <div class="filter-controls">
+                    <!-- State filter will be added here -->
+                </div>
+            </div>
+            
+            <div class="viz-area">
+                <div id="map-container" class="viz-panel">
+                    <h3>Weather Map</h3>
+                    <div id="map-visualization"></div>
+                </div>
+                <div id="temp-container" class="viz-panel">
+                    <h3>Temperature Trends</h3>
+                    <div id="temperature-visualization"></div>
+                </div>
+            </div>
+            
+            <div id="details-panel" class="details-panel">
+                <h3>Weather Details</h3>
+                <p>Select a location on the map to see details.</p>
+            </div>
+        </section>
+        
+        <section class="write-up">
+            <h2>About This Visualization</h2>
+            
+            <h3>Dataset Introduction</h3>
+            <p>This visualization explores weather patterns across the United States in 2017 using historical weather data from the NOAA Global Historical Climatology Network. We focus primarily on temperature variations across different geographical locations throughout the year. The dataset includes daily weather measurements from various weather stations across the United States, including temperature (minimum, maximum, and average), precipitation, and wind speed.</p>
+            <p>For this visualization, we've chosen to focus on temperature as our primary variable, as it provides a clear visual pattern when mapped geographically and shows interesting seasonal trends when viewed over time. We've processed the raw data to convert temperature values from Fahrenheit to Celsius and calculated average temperatures for each station to provide a meaningful color encoding on the map.</p>
+            
+            <h3>Design Rationale</h3>
+            <p>Our visualization combines geographic mapping with temporal data visualization to provide a comprehensive understanding of weather patterns. The map shows the spatial distribution of weather stations, with color encoding representing average temperature, while the temperature chart reveals trends over time for individual stations.</p>
+            
+            <p>We made several key design decisions:</p>
+            <ul>
+                <li><strong>Color Scheme:</strong> We chose a red-yellow-blue color scale (using D3's interpolateRdYlBu) for temperature, as it's both intuitive (red for hot, blue for cold) and accessible for most users with color vision deficiencies.</li>
+                <li><strong>Map Style:</strong> We selected a light, neutral map background to ensure the temperature-coded markers stand out clearly.</li>
+                <li><strong>Marker Size:</strong> Station markers are sized based on the number of readings available, giving visual prominence to stations with more complete data.</li>
+                <li><strong>Interactive Elements:</strong> We prioritized tooltips and filtering as our core interactions to keep the interface simple while providing rich data exploration capabilities.</li>
+            </ul>
+            
+            <h3>Implemented Interactions</h3>
+            <ul>
+                <li><strong>Category I:</strong> Dynamic filtering by state - allows users to filter weather stations by selecting specific states</li>
+                <li><strong>Category II:</strong> Details-on-demand through tooltips - provides additional information when hovering over map markers and chart points</li>
+            </ul>
+            
+            <p>We considered several alternative interaction techniques:</p>
+            <ul>
+                <li><strong>Brushing and Linking:</strong> We initially implemented a date range filter that allowed brushing on the timeline, but simplified to focus on state filtering for clarity.</li>
+                <li><strong>Zoom/Pan:</strong> While the map supports zooming and panning through Leaflet's built-in functionality, we chose to emphasize tooltips as our primary Category II interaction for a more focused user experience.</li>
+                <li><strong>Animation:</strong> We considered animating temperature changes over time but opted for static visualization with interactive filtering to give users more control over their exploration.</li>
+            </ul>
+            
+            <h3>Data Sources</h3>
+            <p>The weather data used in this visualization is derived from the <a href="https://www.ncdc.noaa.gov/data-access/land-based-station-data/land-based-datasets/global-historical-climatology-network-ghcn" target="_blank">NOAA Global Historical Climatology Network</a>. We used a subset of the 2017 daily data, focusing on stations within the United States.</p>
+            
+            <p>Our visualization approach was inspired by several existing examples:</p>
+            <ul>
+                <li>The <a href="https://www.climate.gov/maps-data" target="_blank">NOAA Climate.gov</a> visualizations of temperature anomalies</li>
+                <li>The <a href="https://leafletjs.com/" target="_blank">Leaflet</a> and <a href="https://d3js.org/" target="_blank">D3.js</a> documentation examples for map and chart implementations</li>
+            </ul>
+            
+            <h3>Development Process</h3>
+            <p>Our development process followed an iterative approach, starting with basic data loading and visualization, then progressively adding interactive features and refining the design.</p>
+            
+            <p><strong>Work Distribution:</strong></p>
+            <ul>
+                <li>Data processing and initial visualization setup (30%)</li>
+                <li>Map implementation and station markers (25%)</li>
+                <li>Temperature chart implementation (20%)</li>
+                <li>Interactive filtering and tooltips (15%)</li>
+                <li>Design refinement and documentation (10%)</li>
+            </ul>
+            
+            <p><strong>Development Time:</strong> We spent approximately 40 people-hours developing this application.</p>
+            
+            <p><strong>Challenges:</strong> The most time-consuming aspects were:</p>
+            <ul>
+                <li>Processing and cleaning the raw weather data to ensure consistency</li>
+                <li>Implementing the state filtering functionality with proper handling of the "All States" option</li>
+                <li>Ensuring smooth interaction between the map and temperature chart</li>
+                <li>Optimizing performance with a large number of data points</li>
+                <li>Fine-tuning the visual design for clarity and aesthetic appeal</li>
+            </ul>
+        </section>
+    </main>
+    
+    <footer>
+        <p>Created for CMSC471 Data Visualization</p>
+    </footer>
+    
+    <script src="js/main.js"></script>
+</body>
+</html>
