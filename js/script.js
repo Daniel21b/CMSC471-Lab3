@@ -1,6 +1,6 @@
 const margin = { top: 80, right: 60, bottom: 60, left: 100 };
-const width = 800 - margin.left - margin.right;
-const height = 600 - margin.top - margin.bottom;
+const width = 700 - margin.left - margin.right;
+const height = 500 - margin.top - margin.bottom;
 
 
 const svg = d3.select('#vis')
