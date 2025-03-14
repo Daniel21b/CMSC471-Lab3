@@ -1,32 +1,115 @@
-
 document.addEventListener('DOMContentLoaded', async () => {
     try {
+        // Set up the SVG dimensions and margins
+        const margin = { top: 0, right: 20, bottom: 20, left: 20 };
+        const width = document.getElementById('vis').clientWidth - margin.left - margin.right;
+        const height = 450 - margin.top - margin.bottom;
 
-        const weatherData = await loadWeatherData();
+        const svg = d3.select('#vis')
+            .append('svg')
+            .attr('width', width + margin.left + margin.right)
+            .attr('height', height + margin.top + margin.bottom)
+            .append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+
+        // Set up the projection
+        const projection = d3.geoAlbersUsa()
+            .scale(width)
+            .translate([width / 2, height / 2]);
+
+        // Add loading indicator
+        svg.append('text')
+            .attr('x', width / 2)
+            .attr('y', height / 2)
+            .attr('text-anchor', 'middle')
+            .text('Loading data...');
+
+        // Load both data sources
+        const [weatherData, usMap] = await Promise.all([
+            d3.csv('data/weather_subset.csv'),
+            d3.json('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json')
+        ]);
+
+        // Process the weather data
         const processedData = processWeatherData(weatherData);
-        
-
         const { stationData, stationGroups } = analyzeStationData(processedData);
-        
 
+        // Create color scale
         const colorScale = d3.scaleSequential(d3.interpolateRdYlBu)
-            .domain([d3.max(stationData, d => d.avgTemperature), d3.min(stationData, d => d.avgTemperature)]);
-        
+            .domain([d3.max(stationData, d => d.avgTemperature), 
+                    d3.min(stationData, d => d.avgTemperature)]);
 
-        const { map, markers } = initializeMap(stationData, processedData, colorScale);
-        
+        // Clear loading message
+        svg.selectAll('text').remove();
 
-        addLegendToMap(map, stationData, colorScale);
-        
+        // Draw the map
+        svg.append('g')
+            .selectAll('path')
+            .data(topojson.feature(usMap, usMap.objects.states).features)
+            .join('path')
+            .attr('fill', 'white')
+            .attr('stroke', '#2f4858')
+            .attr('stroke-width', 1)
+            .attr('d', d3.geoPath().projection(projection));
 
-        setupStateFilter(stationData, markers, map, processedData, colorScale);
-        
+        // Add US outline
+        svg.append('path')
+            .datum(topojson.mesh(usMap, usMap.objects.states, (a, b) => a === b))
+            .attr('fill', 'none')
+            .attr('stroke', '#2f4858')
+            .attr('stroke-width', 1)
+            .attr('d', d3.geoPath().projection(projection));
 
-        handleWindowResize(map);
-        
+        // Add weather stations
+        svg.selectAll('circle')
+            .data(stationData)
+            .join('circle')
+            .attr('cx', d => {
+                const pos = projection([d.longitude, d.latitude]);
+                return pos ? pos[0] : 0;
+            })
+            .attr('cy', d => {
+                const pos = projection([d.longitude, d.latitude]);
+                return pos ? pos[1] : 0;
+            })
+            .attr('r', d => Math.min(8, 4 + d.readings / 150))
+            .attr('fill', d => colorScale(d.avgTemperature))
+            .attr('opacity', 0.7)
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 1)
+            .on('click', (event, d) => {
+                const stationData = processedData
+                    .filter(pd => pd.station === d.station)
+                    .map(d => ({
+                        date: new Date(d.date),
+                        temperature: d.temperature
+                    }))
+                    .sort((a, b) => a.date - b.date);
+
+                updateDetailsPanel(d, stationData);
+                createTemperatureTrends(
+                    document.getElementById('temperature-visualization'),
+                    stationData
+                );
+                createSecondPlot(
+                    document.getElementById('second-plot'),
+                    stationData
+                );
+            });
+
+        // Add legend
+        addLegendToMap(svg, stationData, colorScale, width, height);
+
+        // Set up filtering
+        setupStateFilter(stationData, svg.selectAll('circle'), processedData, colorScale);
+
+        // Initialize empty temperature trends
+        const tempContainer = document.getElementById('temperature-visualization');
+        createTemperatureTrends(tempContainer, []);
+
     } catch (error) {
         console.error('Error initializing application:', error);
-        showErrorMessage('map-visualization');
+        showErrorMessage('vis');
         showErrorMessage('temperature-visualization');
     }
 });
@@ -120,7 +203,6 @@ function initializeMap(stationData, processedData, colorScale) {
 
         marker.on('click', function() {
             const stationData = processedData.filter(d => d.station === station.station);
-            displayTemperatureChart(stationData, station.avgTemperature, colorScale);
             updateDetailsPanel(station, stationData);
         });
     });
@@ -166,90 +248,57 @@ function addMarkerHoverEffects(marker) {
 
 function updateDetailsPanel(station, filteredData) {
     document.getElementById('details-panel').innerHTML = `
-        <h3>${station.station}, ${station.state}</h3>
-        <p>Average Temperature: ${station.avgTemperature.toFixed(1)}°C</p>
-        <p>Latitude: ${station.latitude.toFixed(4)}, Longitude: ${station.longitude.toFixed(4)}</p>
-        <p>Elevation: ${station.elevation}m</p>
-        <p>Number of readings: ${filteredData.length}</p>
+        <h3>Weather Details</h3>
+        <p>Select a weather station on the map (you can filter by state above) to explore temperature trends, or interact with the temperature chart to analyze seasonal patterns and daily variations.</p>
     `;
 }
 
 
-function addLegendToMap(map, stationData, colorScale) {
-    const legend = L.control({position: 'bottomright'});
-    
-    legend.onAdd = function(map) {
-        const div = L.DomUtil.create('div', 'info legend');
-        const tempRange = d3.range(
-            Math.floor(d3.min(stationData, d => d.avgTemperature)),
-            Math.ceil(d3.max(stationData, d => d.avgTemperature)),
-            (Math.ceil(d3.max(stationData, d => d.avgTemperature)) - Math.floor(d3.min(stationData, d => d.avgTemperature))) / 5
-        );
-        
-        div.innerHTML += '<h4>Avg. Temp (°C)</h4>';
-        
+function addLegendToMap(svg, stationData, colorScale, width, height) {
+    const legendGroup = svg.append('g')
+        .attr('class', 'legend')
+        .attr('transform', `translate(${width - 120}, ${height - 150})`);
 
-        for (let i = 0; i < tempRange.length; i++) {
-            div.innerHTML += 
-                '<i style="background:' + colorScale(tempRange[i]) + '"></i> ' +
-                tempRange[i].toFixed(1) + (tempRange[i + 1] ? '&ndash;' + tempRange[i + 1].toFixed(1) + '<br>' : '+');
-        }
-        
-        return div;
-    };
-    
-    legend.addTo(map);
-}
+    const tempRange = d3.range(
+        Math.floor(d3.min(stationData, d => d.avgTemperature)),
+        Math.ceil(d3.max(stationData, d => d.avgTemperature)),
+        (Math.ceil(d3.max(stationData, d => d.avgTemperature)) - 
+         Math.floor(d3.min(stationData, d => d.avgTemperature))) / 5
+    );
 
+    legendGroup.append('rect')
+        .attr('width', 110)
+        .attr('height', 140)
+        .attr('fill', 'white')
+        .attr('rx', 5)
+        .attr('ry', 5)
+        .style('opacity', 0.9);
 
-function displayTemperatureChart(stationData, avgTemperature, colorScale) {
-    const tempContainer = document.getElementById('temperature-visualization');
-    tempContainer.innerHTML = '';
-    
-    if (stationData.length === 0) {
-        tempContainer.innerHTML = '<div class="error-message">No data available for this station.</div>';
-        return;
-    }
-    
+    legendGroup.append('text')
+        .attr('x', 55)
+        .attr('y', 20)
+        .attr('text-anchor', 'middle')
+        .style('font-size', '12px')
+        .style('font-weight', 'bold')
+        .text('Avg. Temp (°C)');
 
-    stationData.sort((a, b) => a.date - b.date);
-    
-
-    const margin = {top: 20, right: 30, bottom: 50, left: 60};
-    const width = tempContainer.clientWidth - margin.left - margin.right;
-    const height = 300 - margin.top - margin.bottom;
-    
-
-    const svg = d3.select('#temperature-visualization')
-        .append('svg')
-        .attr('width', width + margin.left + margin.right)
-        .attr('height', height + margin.top + margin.bottom)
+    const legendItems = legendGroup.selectAll('.legend-item')
+        .data(tempRange)
+        .enter()
         .append('g')
-        .attr('transform', `translate(${margin.left},${margin.top})`);
-    
+        .attr('class', 'legend-item')
+        .attr('transform', (d, i) => `translate(10, ${i * 20 + 30})`);
 
-    const xScale = d3.scaleTime()
-        .domain(d3.extent(stationData, d => d.date))
-        .range([0, width]);
-    
-    const yScale = d3.scaleLinear()
-        .domain([
-            d3.min(stationData, d => d.temperature) - 2,
-            d3.max(stationData, d => d.temperature) + 2
-        ])
-        .range([height, 0]);
-    
+    legendItems.append('rect')
+        .attr('width', 15)
+        .attr('height', 15)
+        .attr('fill', d => colorScale(d));
 
-    createChartAxes(svg, xScale, yScale, height, width, margin);
-    
-
-    const lineColor = colorScale(avgTemperature);
-    
-
-    addTemperatureLine(svg, stationData, xScale, yScale, lineColor);
-    
-
-    addTemperaturePoints(svg, stationData, xScale, yScale, lineColor);
+    legendItems.append('text')
+        .attr('x', 25)
+        .attr('y', 12)
+        .style('font-size', '11px')
+        .text(d => d.toFixed(1) + '°C');
 }
 
 
@@ -290,51 +339,6 @@ function createChartAxes(svg, xScale, yScale, height, width, margin) {
 }
 
 
-function addTemperatureLine(svg, stationData, xScale, yScale, lineColor) {
-    const line = d3.line()
-        .x(d => xScale(d.date))
-        .y(d => yScale(d.temperature))
-        .curve(d3.curveMonotoneX);
-    
-    svg.append('path')
-        .datum(stationData)
-        .attr('class', 'temp-line')
-        .attr('fill', 'none')
-        .attr('stroke', lineColor)
-        .attr('stroke-width', 2.5)
-        .attr('d', line);
-}
-
-
-function addTemperaturePoints(svg, stationData, xScale, yScale, lineColor) {
-    svg.selectAll('.temp-point')
-        .data(stationData)
-        .enter()
-        .append('circle')
-        .attr('class', 'temp-point')
-        .attr('cx', d => xScale(d.date))
-        .attr('cy', d => yScale(d.temperature))
-        .attr('r', 4)
-        .attr('fill', lineColor)
-        .attr('stroke', '#fff')
-        .attr('stroke-width', 1)
-        .on('mouseover', function(event, d) {
-            d3.select(this)
-                .attr('r', 6)
-                .attr('fill', d3.color(lineColor).darker(0.5));
-            
-            showTooltip(event, d);
-        })
-        .on('mouseout', function() {
-            d3.select(this)
-                .attr('r', 4)
-                .attr('fill', lineColor);
-            
-            d3.select('.tooltip').remove();
-        });
-}
-
-
 function showTooltip(event, d) {
     const tooltip = d3.select('body').append('div')
         .attr('class', 'tooltip')
@@ -355,89 +359,102 @@ function showTooltip(event, d) {
 }
 
 
-function setupStateFilter(stationData, markers, map, processedData, colorScale) {
-    const stateSelect = document.createElement('div');
-    stateSelect.className = 'filter-control';
-    stateSelect.innerHTML = `
-        <label for="state-filter">Filter by State:</label>
-        <div class="filter-control-wrapper">
-            <select id="state-filter" multiple>
-                <option value="all" selected>All States</option>
-                ${[...new Set(stationData.map(d => d.state))].sort().map(state => 
-                    `<option value="${state}">${state}</option>`
-                ).join('')}
-            </select>
-            <button id="clear-state-filter" class="filter-button">Reset</button>
-        </div>
-    `;
-    document.querySelector('.filter-controls').appendChild(stateSelect);
+function setupStateFilter(stationData, circles, processedData, colorScale) {
+    // Create the filter control container
+    const filterControl = document.createElement('div');
+    filterControl.className = 'filter-control';
     
-
-    document.getElementById('state-filter').addEventListener('change', function() {
-        applyStateFilter(this, stationData, markers, map, processedData, colorScale);
+    // Add a label
+    const label = document.createElement('label');
+    label.textContent = 'Filter States';
+    filterControl.appendChild(label);
+    
+    // Create checkbox container
+    const checkboxContainer = document.createElement('div');
+    checkboxContainer.className = 'checkbox-container';
+    
+    // Define the exact order we want
+    const orderedStates = ['all', 'CA', 'FL', 'IL', 'NY', 'TX'];
+    
+    // Create checkboxes in specific order
+    orderedStates.forEach(state => {
+        const div = document.createElement('div');
+        div.className = 'checkbox-item';
+        
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.id = state === 'all' ? 'all-states' : `state-${state}`;
+        input.value = state;
+        input.checked = state === 'all';
+        
+        const label = document.createElement('label');
+        label.htmlFor = input.id;
+        label.textContent = state === 'all' ? 'All States' : state;
+        
+        div.appendChild(input);
+        div.appendChild(label);
+        checkboxContainer.appendChild(div);
     });
     
-
-    document.getElementById('clear-state-filter').addEventListener('click', function() {
-        resetStateFilter();
+    filterControl.appendChild(checkboxContainer);
+    
+    // Add event listeners
+    checkboxContainer.addEventListener('change', (event) => {
+        const allStatesCheckbox = document.getElementById('all-states');
+        const stateCheckboxes = Array.from(checkboxContainer.querySelectorAll('input[type="checkbox"]:not(#all-states)'));
+        
+        if (event.target.id === 'all-states') {
+            if (allStatesCheckbox.checked) {
+                stateCheckboxes.forEach(cb => cb.checked = false);
+            }
+        } else {
+            const anyStateChecked = stateCheckboxes.some(cb => cb.checked);
+            allStatesCheckbox.checked = !anyStateChecked;
+            
+            if (!anyStateChecked) {
+                allStatesCheckbox.checked = true;
+            }
+        }
+        
+        const selectedStates = [];
+        if (allStatesCheckbox.checked) {
+            selectedStates.push('all');
+        } else {
+            stateCheckboxes.forEach(cb => {
+                if (cb.checked) selectedStates.push(cb.value);
+            });
+        }
+        
+        applyStateFilter({ selectedStates }, stationData, circles.nodes(), processedData, colorScale);
     });
+    
+    // Add to the filter controls
+    const filterControls = document.querySelector('#vis-container .filter-controls');
+    filterControls.appendChild(filterControl);
+    
+    // Initial filter application
+    applyStateFilter({ selectedStates: ['all'] }, stationData, circles.nodes(), processedData, colorScale);
 }
 
 
-function applyStateFilter(selectElement, stationData, markers, map, processedData, colorScale) {
-    const selectedOptions = Array.from(selectElement.selectedOptions);
-    const selectedStates = selectedOptions.map(option => option.value);
+function applyStateFilter(filter, stationData, circleNodes, processedData, colorScale) {
+    const selectedStates = filter.selectedStates || [];
     const hasAll = selectedStates.includes('all');
     
-
-    if (hasAll && selectedOptions.length > 1) {
-        Array.from(selectElement.options).forEach(option => {
-            option.selected = option.value === 'all';
-        });
-        selectedStates.length = 0;
-        selectedStates.push('all');
-    }
-    
-
-    if (selectedStates.length === 0) {
-        Array.from(selectElement.options).forEach(option => {
-            if (option.value === 'all') {
-                option.selected = true;
-            }
-        });
-        selectedStates.push('all');
-    }
-    
-    console.log(`Filtering to states: ${selectedStates.join(', ')}`);
-    
-    let visibleCount = 0;
-    let hiddenCount = 0;
-    
-
-    stationData.forEach(station => {
-        const marker = markers[station.station];
-        
-        if (!marker) {
-            console.error(`Marker not found for station: ${station.station}`);
+    stationData.forEach((station, i) => {
+        const circle = circleNodes[i];
+        if (!circle) {
+            console.error(`Circle not found for station: ${station.station}`);
             return;
         }
         
         if (hasAll || selectedStates.includes(station.state)) {
-            if (!map.hasLayer(marker)) {
-                map.addLayer(marker);
-            }
-            visibleCount++;
+            d3.select(circle).style('display', null);
         } else {
-            if (map.hasLayer(marker)) {
-                map.removeLayer(marker);
-            }
-            hiddenCount++;
+            d3.select(circle).style('display', 'none');
         }
     });
     
-    console.log(`Filter applied: ${visibleCount} stations visible, ${hiddenCount} stations hidden`);
-    
-
     updateDetailsIfFiltered(stationData, selectedStates, hasAll, processedData, colorScale);
 }
 
@@ -463,9 +480,8 @@ function updateDetailsIfFiltered(stationData, selectedStates, hasAll, processedD
 
             document.getElementById('details-panel').innerHTML = `
                 <h3>Weather Details</h3>
-                <p>Select a location on the map to see details.</p>
+                <p>Select a weather station on the map (you can filter by state above) to explore temperature trends, or interact with the temperature chart to analyze seasonal patterns and daily variations.</p>
             `;
-            document.getElementById('temperature-visualization').innerHTML = '';
         }
     }
 }
@@ -481,4 +497,251 @@ function handleWindowResize(map) {
 function showErrorMessage(containerId) {
     document.getElementById(containerId).innerHTML = 
         '<div class="error-message">Error loading data. Please check the console for details.</div>';
+}
+
+function createTemperatureTrends(container, data) {
+    // Clear the container
+    container.innerHTML = '';
+    
+    // Ensure data is properly formatted
+    const formattedData = data.map(d => ({
+        date: d.date instanceof Date ? d.date : new Date(d.date),
+        temperature: +d.temperature
+    })).sort((a, b) => a.date - b.date);
+
+    // Further increase margins to prevent cutoff
+    const margin = { top: 20, right: 30, bottom: 80, left: 80 };  // Increased bottom and left margins
+    const width = container.clientWidth - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    // Create SVG with adjusted dimensions
+    const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Create scales with proper domains
+    const xScale = d3.scaleTime()
+        .domain(d3.extent(formattedData, d => d.date))
+        .range([0, width]);
+
+    const yScale = d3.scaleLinear()
+        .domain([
+            d3.min(formattedData, d => d.temperature) - 1,
+            d3.max(formattedData, d => d.temperature) + 1
+        ])
+        .range([height, 0]);
+
+    // Add axes
+    const xAxis = d3.axisBottom(xScale);
+    const yAxis = d3.axisLeft(yScale);
+
+    // Add X axis with rotated labels
+    svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .attr('class', 'x-axis')
+        .call(xAxis)
+        .selectAll("text")  
+        .style("text-anchor", "end")
+        .attr("dx", "-.8em")
+        .attr("dy", ".15em")
+        .attr("transform", "rotate(-45)");
+
+    // Add Y axis
+    svg.append('g')
+        .attr('class', 'y-axis')
+        .call(yAxis);
+
+    // Add axis labels with further adjusted positions
+    svg.append('text')
+        .attr('x', width / 2)
+        .attr('y', height + 60)  // Increased distance from axis
+        .style('text-anchor', 'middle')
+        .style('font-size', '12px')  // Added font size
+        .text('Date');
+
+    svg.append('text')
+        .attr('transform', 'rotate(-90)')
+        .attr('x', -height / 2)
+        .attr('y', -60)  // Increased distance from axis
+        .style('text-anchor', 'middle')
+        .style('font-size', '12px')  // Added font size
+        .text('Temperature (°C)');
+
+    // Create and add the line
+    const line = d3.line()
+        .defined(d => !isNaN(d.temperature)) // Handle missing values
+        .x(d => xScale(d.date))
+        .y(d => yScale(d.temperature))
+        .curve(d3.curveMonotoneX);
+
+    // Add the line path
+    svg.append('path')
+        .datum(formattedData)
+        .attr('class', 'temperature-line')
+        .attr('d', line)
+        .attr('fill', 'none')
+        .attr('stroke', '#2171b5')
+        .attr('stroke-width', 1.5);
+
+    // Add data points
+    svg.selectAll('.temperature-point')
+        .data(formattedData)
+        .join('circle')
+        .attr('class', 'temperature-point')
+        .attr('cx', d => xScale(d.date))
+        .attr('cy', d => yScale(d.temperature))
+        .attr('r', 3)
+        .attr('fill', '#2171b5')
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 1);
+
+    // Add hover interactions
+    const tooltip = d3.select('body')
+        .append('div')
+        .attr('class', 'tooltip')
+        .style('opacity', 0);
+
+    svg.selectAll('.temperature-point')
+        .on('mouseover', function(event, d) {
+            d3.select(this)
+                .attr('r', 5)
+                .attr('fill', '#08519c');
+
+            tooltip.transition()
+                .duration(200)
+                .style('opacity', .9);
+
+            tooltip.html(`
+                <div class="tooltip-date">${d.date.toLocaleDateString()}</div>
+                <div class="tooltip-temp">${d.temperature.toFixed(1)}°C</div>
+            `)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 15) + 'px');
+        })
+        .on('mouseout', function() {
+            d3.select(this)
+                .attr('r', 3)
+                .attr('fill', '#2171b5');
+
+            tooltip.transition()
+                .duration(500)
+                .style('opacity', 0);
+        });
+}
+
+function createSecondPlot(container, data) {
+    // Clear the container
+    container.innerHTML = '';
+    
+    // Ensure data is properly formatted
+    const formattedData = data.map(d => ({
+        date: d.date instanceof Date ? d.date : new Date(d.date),
+        temperature: +d.temperature
+    })).sort((a, b) => a.date - b.date);
+
+    // Use the same margin setup that worked for the temperature trends
+    const margin = { top: 20, right: 30, bottom: 80, left: 80 };
+    const width = container.clientWidth - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    // Create SVG
+    const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Create scales
+    const xScale = d3.scaleTime()
+        .domain(d3.extent(formattedData, d => d.date))
+        .range([0, width]);
+
+    const yScale = d3.scaleLinear()
+        .domain([
+            d3.min(formattedData, d => d.temperature) - 1,
+            d3.max(formattedData, d => d.temperature) + 1
+        ])
+        .range([height, 0]);
+
+    // Add X axis with rotated labels
+    svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .attr('class', 'x-axis')
+        .call(d3.axisBottom(xScale))
+        .selectAll("text")
+        .style("text-anchor", "end")
+        .attr("dx", "-.8em")
+        .attr("dy", ".15em")
+        .attr("transform", "rotate(-45)");
+
+    // Add Y axis
+    svg.append('g')
+        .attr('class', 'y-axis')
+        .call(d3.axisLeft(yScale));
+
+    // Add axis labels
+    svg.append('text')
+        .attr('x', width / 2)
+        .attr('y', height + 60)
+        .style('text-anchor', 'middle')
+        .style('font-size', '12px')
+        .text('Date');
+
+    svg.append('text')
+        .attr('transform', 'rotate(-90)')
+        .attr('x', -height / 2)
+        .attr('y', -60)
+        .style('text-anchor', 'middle')
+        .style('font-size', '12px')
+        .text('Temperature (°C)');
+
+    // Add scatter plot points
+    svg.selectAll('.point')
+        .data(formattedData)
+        .join('circle')
+        .attr('class', 'point')
+        .attr('cx', d => xScale(d.date))
+        .attr('cy', d => yScale(d.temperature))
+        .attr('r', 4)
+        .attr('fill', '#e57373')
+        .attr('opacity', 0.6)
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 1);
+
+    // Add hover interactions
+    const tooltip = d3.select('body')
+        .append('div')
+        .attr('class', 'tooltip')
+        .style('opacity', 0);
+
+    svg.selectAll('.point')
+        .on('mouseover', function(event, d) {
+            d3.select(this)
+                .attr('r', 6)
+                .attr('opacity', 1);
+
+            tooltip.transition()
+                .duration(200)
+                .style('opacity', .9);
+
+            tooltip.html(`
+                <div class="tooltip-date">${d.date.toLocaleDateString()}</div>
+                <div class="tooltip-temp">${d.temperature.toFixed(1)}°C</div>
+            `)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 15) + 'px');
+        })
+        .on('mouseout', function() {
+            d3.select(this)
+                .attr('r', 4)
+                .attr('opacity', 0.6);
+
+            tooltip.transition()
+                .duration(500)
+                .style('opacity', 0);
+        });
 }
