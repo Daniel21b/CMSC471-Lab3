@@ -1,4 +1,3 @@
-
 document.addEventListener('DOMContentLoaded', async () => {
     try {
 
@@ -180,19 +179,18 @@ function addLegendToMap(map, stationData, colorScale) {
     
     legend.onAdd = function(map) {
         const div = L.DomUtil.create('div', 'info legend');
-        const tempRange = d3.range(
-            Math.floor(d3.min(stationData, d => d.avgTemperature)),
-            Math.ceil(d3.max(stationData, d => d.avgTemperature)),
-            (Math.ceil(d3.max(stationData, d => d.avgTemperature)) - Math.floor(d3.min(stationData, d => d.avgTemperature))) / 5
-        );
+        
+        const minTemp = d3.min(stationData, d => d.avgTemperature);
+        const maxTemp = d3.max(stationData, d => d.avgTemperature);
+        const step = (maxTemp - minTemp) / 5;
+        const tempRange = d3.range(minTemp, maxTemp + step/2, step);
         
         div.innerHTML += '<h4>Avg. Temp (°C)</h4>';
         
-
-        for (let i = 0; i < tempRange.length; i++) {
+        for (let i = 0; i < tempRange.length - 1; i++) {
             div.innerHTML += 
                 '<i style="background:' + colorScale(tempRange[i]) + '"></i> ' +
-                tempRange[i].toFixed(1) + (tempRange[i + 1] ? '&ndash;' + tempRange[i + 1].toFixed(1) + '<br>' : '+');
+                tempRange[i].toFixed(1) + '&ndash;' + tempRange[i + 1].toFixed(1) + '<br>';
         }
         
         return div;
@@ -254,9 +252,11 @@ function displayTemperatureChart(stationData, avgTemperature, colorScale) {
 
 
 function createChartAxes(svg, xScale, yScale, height, width, margin) {
+    const tickCount = Math.max(3, Math.floor(width / 100));
+    
     const xAxis = d3.axisBottom(xScale)
-        .ticks(7)
-        .tickFormat(d3.timeFormat("%b %d, %Y"));
+        .ticks(tickCount)
+        .tickFormat(d3.timeFormat("%b %d"));
     
     const yAxis = d3.axisLeft(yScale);
     
@@ -270,17 +270,19 @@ function createChartAxes(svg, xScale, yScale, height, width, margin) {
         .attr("dy", ".15em")
         .attr("transform", "rotate(-45)");
     
-    svg.append('g')
-        .attr('class', 'y-axis')
-        .call(yAxis);
-    
-
     svg.append('text')
-        .attr('class', 'x-label')
+        .attr('class', 'year-label')
         .attr('text-anchor', 'middle')
         .attr('x', width / 2)
         .attr('y', height + margin.bottom - 5)
-        .text('Date');
+        .text(() => {
+            const firstDate = xScale.domain()[0];
+            return firstDate.getFullYear();
+        });
+    
+    svg.append('g')
+        .attr('class', 'y-axis')
+        .call(yAxis);
     
     svg.append('text')
         .attr('class', 'y-label')
